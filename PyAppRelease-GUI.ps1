@@ -37,14 +37,18 @@ function Write-ErrorLog([string]$source, [object]$errorObject) {
         }
         $msg = "TIME: $(Get-Date)`nSOURCE: $source`nDETAIL:`n$detail`n---`n"
         [IO.File]::AppendAllText($script:ErrorLogFile, $msg)
-    } catch {}
+    } catch {
+        [System.Diagnostics.Debug]::WriteLine("Write-ErrorLog failed: $($_)")
+    }
 }
 
 function Write-TraceLog([string]$source, [string]$message) {
     try {
         $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [$PID] [$source] $message`r`n"
         [IO.File]::AppendAllText($script:TraceLogFile, $line)
-    } catch {}
+    } catch {
+        [System.Diagnostics.Debug]::WriteLine("Write-TraceLog failed: $($_)")
+    }
 }
 
 try {
@@ -54,7 +58,9 @@ try {
     Write-TraceLog "Startup" ("CommandLine=" + [Environment]::CommandLine)
     Write-TraceLog "Startup" ("InvocationLine=" + $MyInvocation.Line)
     Write-TraceLog "Startup" ("CurrentDirectory=" + (Get-Location).Path)
-} catch {}
+} catch {
+    [System.Diagnostics.Debug]::WriteLine("Startup trace init failed: $($_)")
+}
 
 trap {
     Write-TraceLog "Trap" "Top-level trap fired."
@@ -63,7 +69,9 @@ trap {
     try {
         [System.Windows.Forms.MessageBox]::Show(
             "ERROR:`n$_`n`nLog: $script:ErrorLogFile", "PyAppRelease Error", "OK", "Error") | Out-Null
-    } catch {}
+    } catch {
+        [System.Diagnostics.Debug]::WriteLine("Trap messagebox failed: $($_)")
+    }
     exit 1
 }
 
@@ -95,7 +103,9 @@ try {
     try {
         [System.Windows.Forms.MessageBox]::Show(
             "Unhandled UI error.`n`nLog: $script:ErrorLogFile", "PyAppRelease Error", "OK", "Error") | Out-Null
-    } catch {}
+        } catch {
+            [System.Diagnostics.Debug]::WriteLine("ThreadException messagebox failed: $($_)")
+        }
 })
 [AppDomain]::CurrentDomain.add_UnhandledException({
     param($sender, $e)

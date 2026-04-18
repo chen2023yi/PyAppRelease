@@ -234,7 +234,7 @@ function Invoke-PyAppRelease {
     # Pin an exact version, skip git, preview only
     Invoke-PyAppRelease -VersionOverride 2.0.0 -SkipGitTag -DryRun
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param(
         [string]$ConfigFile      = "release.config.psd1",
         [switch]$BumpMajor,
@@ -317,7 +317,11 @@ function Invoke-PyAppRelease {
     # All generated / intermediate files go into the release folder
     # so the source tree stays clean.
     if (-not (Test-Path $outputDirPath)) {
-        New-Item -ItemType Directory -Path $outputDirPath -Force | Out-Null
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($outputDirPath, 'Create directory')) {
+            New-Item -ItemType Directory -Path $outputDirPath -Force | Out-Null
+        } else {
+            Write-ReleaseSkip "Create dir $outputDirPath (WhatIf)"
+        }
     }
     $versionFilePath = Join-Path $outputDirPath "VERSION"
 
@@ -327,12 +331,16 @@ function Invoke-PyAppRelease {
     if (-not (Test-Path $versionFilePath)) {
         # Also check the legacy location in project root for migration
         $legacyVerPath = Join-Path $ProjectRoot $VersionFile
-        if (Test-Path $legacyVerPath) {
+            if (Test-Path $legacyVerPath) {
             $currentVersion = (Get-Content $legacyVerPath -Raw).Trim()
             if ($currentVersion -match '^\d+\.\d+\.\d+$') {
                 Write-ReleaseWarn "Migrating VERSION from project root to $OutputDir/"
                 if (-not $DryRun) {
-                    Set-Content -Path $versionFilePath -Value $currentVersion -Encoding UTF8
+                    if ($PSCmdlet -and $PSCmdlet.ShouldProcess($versionFilePath, 'Write VERSION')) {
+                        Set-Content -Path $versionFilePath -Value $currentVersion -Encoding UTF8
+                    } else {
+                        Write-ReleaseSkip "Write VERSION $versionFilePath (WhatIf)"
+                    }
                 }
             } else {
                 throw "VERSION file must contain a semantic version (e.g. 1.0.0). Got: '$currentVersion'"
@@ -341,7 +349,11 @@ function Invoke-PyAppRelease {
             Write-ReleaseWarn "VERSION file not found — initializing to 0.0.0"
             $currentVersion = '0.0.0'
             if (-not $DryRun) {
-                Set-Content -Path $versionFilePath -Value '0.0.0' -Encoding UTF8
+                if ($PSCmdlet -and $PSCmdlet.ShouldProcess($versionFilePath, 'Write VERSION')) {
+                    Set-Content -Path $versionFilePath -Value '0.0.0' -Encoding UTF8
+                } else {
+                    Write-ReleaseSkip "Write VERSION $versionFilePath (WhatIf)"
+                }
             }
         }
     } else {
@@ -366,7 +378,11 @@ function Invoke-PyAppRelease {
     Write-Host "    New     : $newVersion"
 
     if (-not $DryRun) {
-        Set-Content -Path $versionFilePath -Value $newVersion -Encoding UTF8
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($versionFilePath, 'Update VERSION')) {
+            Set-Content -Path $versionFilePath -Value $newVersion -Encoding UTF8
+        } else {
+            Write-ReleaseSkip "Update VERSION $versionFilePath (WhatIf)"
+        }
     }
     Write-ReleaseOK "VERSION -> $newVersion"
 
@@ -405,12 +421,16 @@ function Invoke-PyAppRelease {
 
         # Generate Windows PE version-info file inside release folder (never in source)
         $verInfoPath = Join-Path $outputDirPath "_pyapprelease_version.txt"
-        New-PeVersionFile -path        $verInfoPath `
-                          -version     $newVersion `
-                          -appName     $AppName `
-                          -displayName $DisplayName `
-                          -description $Description `
-                          -company     $Company
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($verInfoPath, 'Generate version info file')) {
+            New-PeVersionFile -path        $verInfoPath `
+                              -version     $newVersion `
+                              -appName     $AppName `
+                              -displayName $DisplayName `
+                              -description $Description `
+                              -company     $Company
+        } else {
+            Write-ReleaseSkip "Generate version info file (WhatIf)"
+        }
 
         # Assemble PyInstaller arguments
         $piArgs = @("-m", "PyInstaller", "--noconfirm", "--clean")
@@ -443,7 +463,11 @@ function Invoke-PyAppRelease {
         } finally {
             $ErrorActionPreference = $oldEap
             Pop-Location
-            Remove-Item $verInfoPath -ErrorAction SilentlyContinue
+            if ($PSCmdlet -and $PSCmdlet.ShouldProcess($verInfoPath, 'Remove temp version file')) {
+                Remove-Item $verInfoPath -ErrorAction SilentlyContinue
+            } else {
+                Write-ReleaseSkip "Remove $verInfoPath (WhatIf)"
+            }
         }
 
         if ($pyiExit -and $pyiExit -ne 0) {
