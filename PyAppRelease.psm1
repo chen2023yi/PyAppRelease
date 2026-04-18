@@ -80,8 +80,8 @@ function Get-SignToolPath {
     # Search Windows SDK installations using environment-aware locations.
     # Avoid hard-coded developer-machine paths; prefer ProgramFiles env vars.
     $candidates = @()
-    if ($env:ProgramFiles(x86)) { $candidates += Join-Path $env:ProgramFiles(x86) 'Windows Kits\10\bin' }
-    if ($env:ProgramFiles)      { $candidates += Join-Path $env:ProgramFiles 'Windows Kits\10\bin' }
+    if (${env:ProgramFiles(x86)}) { $candidates += Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin' }
+    if ($env:ProgramFiles)        { $candidates += Join-Path $env:ProgramFiles 'Windows Kits\10\bin' }
 
     foreach ($base in $candidates) {
         if (Test-Path $base) {
@@ -99,8 +99,8 @@ function Get-IsccPath {
     # Prefer environment-aware paths; do not hardcode machine-specific roots.
     $candidates = @()
     if ($env:LOCALAPPDATA) { $candidates += Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe' }
-    if ($env:ProgramFiles(x86)) { $candidates += Join-Path $env:ProgramFiles(x86) 'Inno Setup 6\ISCC.exe' }
-    if ($env:ProgramFiles)      { $candidates += Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe' }
+    if (${env:ProgramFiles(x86)}) { $candidates += Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe' }
+    if ($env:ProgramFiles)        { $candidates += Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe' }
 
     foreach ($p in $candidates) {
         if (Test-Path $p) { return $p }
