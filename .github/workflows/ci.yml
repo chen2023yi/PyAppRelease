@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  powerShellChecks:
+    name: PowerShell checks (windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Create venv and install PyInstaller
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python -m pip install --upgrade pip
+          .\.venv\Scripts\pip install pyinstaller
+
+      - name: Import PowerShell module and run dry-run
+        shell: pwsh
+        run: |
+          Import-Module .\PyAppRelease.psm1 -Force
+          Write-Host "Module imported OK"
+          if (Test-Path .\release.config.psd1) {
+            Write-Host "Found release.config.psd1 — running DryRun"
+            Invoke-PyAppRelease -ConfigFile 'release.config.psd1' -DryRun
+          } else {
+            Write-Host "No release.config.psd1 found — skipping DryRun"
+          }
+
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path . -Filter *.ps1 -Recurse | ForEach-Object {
+            Write-Host "Checking $_.FullName"
+            try { [scriptblock]::Create((Get-Content $_.FullName -Raw)) > $null; Write-Host "OK: $_.FullName" } catch { Write-Error "Syntax error: $_"; exit 2 }
+          }
