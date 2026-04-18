@@ -24,13 +24,14 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck
-          $errs = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error -ExcludeRule PSUseBOMForUnicodeEncodedFile
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -SettingsFile '.\PSScriptAnalyzerSettings.psd1'
+          $errs = $results | Where-Object { $_.Severity -eq 'Error' }
           if ($errs -and $errs.Count -gt 0) {
-              Write-Error "PSScriptAnalyzer found errors"
-              $errs | ForEach-Object { Write-Error ($_.RuleName + ": " + $_.Message) }
-              exit 2
+            Write-Error "PSScriptAnalyzer found errors"
+            $errs | ForEach-Object { Write-Error ($_.RuleName + ": " + $_.Message) }
+            exit 2
           } else {
-              Write-Host 'PSScriptAnalyzer: no errors'
+            Write-Host 'PSScriptAnalyzer: no errors (errors list empty)'
           }
 
       - name: Create venv and install PyInstaller

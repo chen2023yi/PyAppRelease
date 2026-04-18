@@ -40,6 +40,26 @@ python -m venv .venv
 ```
 如不使用 `.venv`，可在 `release.config.psd1` 中设置 `VenvPython` 指向你的 python 可执行文件。
 
+## 本地静态分析与测试
+
+在本地运行与 CI 相同的静态检查与测试，便于在提交前修复问题：
+
+- 安装并运行 `PSScriptAnalyzer`：
+
+```powershell
+Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+Invoke-ScriptAnalyzer -Path . -Recurse -SettingsFile .\PSScriptAnalyzerSettings.psd1
+```
+
+- 安装并运行 `Pester` 测试：
+
+```powershell
+Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
+Invoke-Pester -Script .\tests
+```
+
+PSScriptAnalyzer 的规则与严重级别可通过仓库根目录下的 `PSScriptAnalyzerSettings.psd1` 调整。
+
 release.config.psd1 关键字段
 - `AppName`：应用名（必须）。
 - `EntryScript`：应用入口脚本（如 `main.py`）。
