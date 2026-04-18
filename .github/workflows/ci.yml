@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -SettingsFile '.\PSScriptAnalyzerSettings.psd1'
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings '.\PSScriptAnalyzerSettings.psd1'
           $errs = $results | Where-Object { $_.Severity -eq 'Error' }
           if ($errs -and $errs.Count -gt 0) {
             Write-Error "PSScriptAnalyzer found errors"

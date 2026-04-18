@@ -48,7 +48,7 @@ python -m venv .venv
 
 ```powershell
 Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
-Invoke-ScriptAnalyzer -Path . -Recurse -SettingsFile .\PSScriptAnalyzerSettings.psd1
+Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
 ```
 
 - 安装并运行 `Pester` 测试：
