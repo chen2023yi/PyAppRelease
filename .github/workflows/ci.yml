@@ -20,6 +20,19 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install PSScriptAnalyzer and run
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck
+          $errs = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error -ExcludeRule PSUseBOMForUnicodeEncodedFile
+          if ($errs -and $errs.Count -gt 0) {
+              Write-Error "PSScriptAnalyzer found errors"
+              $errs | ForEach-Object { Write-Error ($_.RuleName + ": " + $_.Message) }
+              exit 2
+          } else {
+              Write-Host 'PSScriptAnalyzer: no errors'
+          }
+
       - name: Create venv and install PyInstaller
         shell: pwsh
         run: |
@@ -38,6 +51,12 @@ jobs:
           } else {
             Write-Host "No release.config.psd1 found — skipping DryRun"
           }
+
+      - name: Install Pester and run tests
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck -AllowClobber
+          Invoke-Pester -Script @{ Path = '.\tests'; Output = 'JUnit' } -PassThru
 
       - name: PowerShell syntax check
         shell: pwsh
