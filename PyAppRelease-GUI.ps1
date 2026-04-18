@@ -6,8 +6,16 @@ if (-not $ProjectDir -and $env:PYAPP_PROJECT_DIR) {
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:ErrorLogFile = Join-Path $ScriptDir "PyAppRelease_GUI_error.txt"
-$script:TraceLogFile = Join-Path $ScriptDir "PyAppRelease_GUI_trace.txt"
+
+# Log files are written to the user's application data directory to comply
+# with "read-write data area" rules (no writable data under the install dir).
+# Dynamic path mechanism: logs are placed under the current user's
+# LocalApplicationData\PyAppRelease folder so they are per-user and portable.
+$localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+$logDir = Join-Path $localAppData 'PyAppRelease'
+if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
+$script:ErrorLogFile = Join-Path $logDir "PyAppRelease_GUI_error.txt"
+$script:TraceLogFile = Join-Path $logDir "PyAppRelease_GUI_trace.txt"
 
 # STA check - WinForms requires Single-Threaded Apartment
 if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
@@ -620,7 +628,8 @@ $btnStart.Add_Click({
     }
     $modPath = Find-ModulePath
     if (-not $modPath) {
-        [System.Windows.Forms.MessageBox]::Show("PyAppRelease module not found.`nRun: F:\MyCode\PyAppRelease\Install.ps1", "Module Missing", "OK", "Error") | Out-Null
+        $installScript = Join-Path $ScriptDir 'Install.ps1'
+        [System.Windows.Forms.MessageBox]::Show("PyAppRelease module not found.`nRun: $installScript", "Module Missing", "OK", "Error") | Out-Null
         return
     }
     $folder = $txtFolder.Text.Trim() -replace "'", "''"

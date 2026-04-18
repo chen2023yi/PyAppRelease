@@ -11,10 +11,10 @@ PyAppRelease — 操作说明（简明）
 - Windows SDK 的 `signtool.exe`（可选，用于代码签名）。
 
 快速启动 — GUI
-1. 双击运行 `PyAppRelease-GUI.bat`，或运行：
+1. 双击运行 `PyAppRelease-GUI.bat`，或在仓库根目录运行：
 
 ```powershell
-Start-Process powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File "F:\MyCode\PyAppRelease\PyAppRelease-GUI.ps1"
+Start-Process powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File ".\PyAppRelease-GUI.ps1"
 ```
 
 2. 在 GUI 中：
@@ -50,8 +50,8 @@ release.config.psd1 关键字段
 - 签名：通过 GUI 传递环境变量 `PYAPP_SIGN_PFX` / `PYAPP_SIGN_PASSWORD` 或 `PYAPP_SIGN_THUMBPRINT` 给子进程，避免明文写入磁盘。
 
 日志与故障排查
-- GUI 跟踪文件：`PyAppRelease_GUI_trace.txt`（脚本目录）。
-- GUI 错误文件：`PyAppRelease_GUI_error.txt`（脚本目录）。
+- GUI 跟踪文件：`%LOCALAPPDATA%\PyAppRelease\PyAppRelease_GUI_trace.txt`（每个用户的数据目录）。
+- GUI 错误文件：`%LOCALAPPDATA%\PyAppRelease\PyAppRelease_GUI_error.txt`（每个用户的数据目录）。
 - 打包运行时输出会写入临时 `.log` 并在结束后删除；若需要保留输出，可使用 `-DryRun` 或在 Invoke-PyAppRelease 中临时修改行为。
 
 常见问题与解决

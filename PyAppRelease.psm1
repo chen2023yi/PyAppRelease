@@ -29,6 +29,16 @@
     Repo    : https://github.com/chen2023yi/PyAppRelease
 #>
 
+# Packaging guideline annotations (per 桌面软件打包与发布规范.md):
+# - Dynamic path mechanism: discover tools via environment variables (ProgramFiles, LocalAppData)
+#   and use project-relative `OutputDir` for build artifacts. GUI logs are written to
+#   the per-user LocalApplicationData\PyAppRelease folder (no writable files under install dir).
+# - Core module protection: for production builds consider AOT/compilation (Nuitka/Cython)
+#   or obfuscation for core business logic. The pipeline includes hooks where a
+#   `UseAOT`/`UseNuitka` configuration flag can be supported to switch strategies.
+# - User data mapping: runtime writable data (logs, DB, settings) must target
+#   `%APPDATA%` or `%LOCALAPPDATA%`, not the program installation directory.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -67,25 +77,31 @@ function Invoke-ReleaseCmd([string]$desc, [scriptblock]$cmd, [bool]$dry) {
 function Get-SignToolPath {
     $cmd = Get-Command signtool -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
+    # Search Windows SDK installations using environment-aware locations.
+    # Avoid hard-coded developer-machine paths; prefer ProgramFiles env vars.
+    $candidates = @()
+    if ($env:ProgramFiles(x86)) { $candidates += Join-Path $env:ProgramFiles(x86) 'Windows Kits\10\bin' }
+    if ($env:ProgramFiles)      { $candidates += Join-Path $env:ProgramFiles 'Windows Kits\10\bin' }
 
-    # Search Windows SDK installations (newest first, x64 preferred)
-    $sdk = "C:\Program Files (x86)\Windows Kits\10\bin"
-    if (Test-Path $sdk) {
-        $found = Get-ChildItem $sdk -Filter "signtool.exe" -Recurse -ErrorAction SilentlyContinue |
-                 Where-Object { $_.FullName -match 'x64' } |
-                 Sort-Object LastWriteTime -Descending |
-                 Select-Object -First 1
-        if ($found) { return $found.FullName }
+    foreach ($base in $candidates) {
+        if (Test-Path $base) {
+            $found = Get-ChildItem $base -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -match 'x64' } |
+                     Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 1
+            if ($found) { return $found.FullName }
+        }
     }
     return $null
 }
 
 function Get-IsccPath {
-    $candidates = @(
-        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe"
-    )
+    # Prefer environment-aware paths; do not hardcode machine-specific roots.
+    $candidates = @()
+    if ($env:LOCALAPPDATA) { $candidates += Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe' }
+    if ($env:ProgramFiles(x86)) { $candidates += Join-Path $env:ProgramFiles(x86) 'Inno Setup 6\ISCC.exe' }
+    if ($env:ProgramFiles)      { $candidates += Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe' }
+
     foreach ($p in $candidates) {
         if (Test-Path $p) { return $p }
     }
