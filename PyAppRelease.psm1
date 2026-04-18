@@ -136,14 +136,16 @@ function Invoke-SignFile([string]$filePath, [bool]$dry) {
     if (-not $dry) { Write-ReleaseOK "Signed: $(Split-Path $filePath -Leaf)" }
 }
 
-function New-PeVersionFile(
-    [string]$path,
-    [string]$version,
-    [string]$appName,
-    [string]$displayName,
-    [string]$description,
-    [string]$company
-) {
+function New-PeVersionFile {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param(
+        [string]$path,
+        [string]$version,
+        [string]$appName,
+        [string]$displayName,
+        [string]$description,
+        [string]$company
+    )
     $parts = $version -split '\.'
     while ($parts.Count -lt 4) { $parts += "0" }
     $tuple = "$($parts[0]), $($parts[1]), $($parts[2]), $($parts[3])"
@@ -259,7 +261,7 @@ function Invoke-PyAppRelease {
 
     # ── Resolve config with defaults ──────────────────────────────────────────
     function Cfg([string]$key, [object]$default) {
-        if ($cfg.ContainsKey($key) -and $cfg[$key] -ne $null) { return $cfg[$key] }
+        if ($cfg.ContainsKey($key) -and $null -ne $cfg[$key]) { return $cfg[$key] }
         return $default
     }
 
@@ -372,6 +374,7 @@ function Invoke-PyAppRelease {
         $newVersion = $VersionOverride
     } elseif ($BumpMajor) { $newVersion = "$($ma+1).0.0" }
     elseif  ($BumpMinor)  { $newVersion = "$ma.$($mi+1).0" }
+    elseif  ($BumpPatch)  { $newVersion = "$ma.$mi.$($pa+1)" }
     else                  { $newVersion = "$ma.$mi.$($pa+1)" }   # default: patch
 
     Write-Host "    Current : $currentVersion"
@@ -401,19 +404,24 @@ function Invoke-PyAppRelease {
         # native stderr text as terminating PowerShell errors.
         $oldEap = $ErrorActionPreference
         $pipExit = 0
-        try {
-            $ErrorActionPreference = "Continue"
-            & $pythonExe -m pip install --quiet --upgrade pyinstaller 2>&1 | ForEach-Object {
-                if ($_ -is [System.Management.Automation.ErrorRecord]) {
-                    $msg = $_.ToString().Trim()
-                    if ($msg) { Write-ReleaseWarn $msg }
-                } else {
-                    $_
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($pythonExe, 'Install/upgrade pyinstaller')) {
+            try {
+                $ErrorActionPreference = "Continue"
+                & $pythonExe -m pip install --quiet --upgrade pyinstaller 2>&1 | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                        $msg = $_.ToString().Trim()
+                        if ($msg) { Write-ReleaseWarn $msg }
+                    } else {
+                        $_
+                    }
                 }
+                $pipExit = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $oldEap
             }
-            $pipExit = $LASTEXITCODE
-        } finally {
-            $ErrorActionPreference = $oldEap
+        } else {
+            Write-ReleaseSkip "pip install pyinstaller (WhatIf)"
+            $pipExit = 0
         }
         if ($pipExit -and $pipExit -ne 0) {
             throw "pip install pyinstaller failed with exit code $pipExit"
@@ -446,28 +454,32 @@ function Invoke-PyAppRelease {
         $piArgs += $ExtraArgs
         $piArgs += $EntryScript
 
-        Push-Location $ProjectRoot
-        $oldEap = $ErrorActionPreference
         $pyiExit = 0
-        try {
-            $ErrorActionPreference = "Continue"
-            & $pythonExe @piArgs 2>&1 | ForEach-Object {
-                if ($_ -is [System.Management.Automation.ErrorRecord]) {
-                    $msg = $_.ToString().Trim()
-                    if ($msg) { Write-ReleaseWarn $msg }
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($ProjectRoot, 'Run PyInstaller build')) {
+            Push-Location $ProjectRoot
+            $oldEap = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = "Continue"
+                & $pythonExe @piArgs 2>&1 | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                        $msg = $_.ToString().Trim()
+                        if ($msg) { Write-ReleaseWarn $msg }
+                    } else {
+                        $_
+                    }
+                }
+                $pyiExit = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $oldEap
+                Pop-Location
+                if ($PSCmdlet -and $PSCmdlet.ShouldProcess($verInfoPath, 'Remove temp version file')) {
+                    Remove-Item $verInfoPath -ErrorAction SilentlyContinue
                 } else {
-                    $_
+                    Write-ReleaseSkip "Remove $verInfoPath (WhatIf)"
                 }
             }
-            $pyiExit = $LASTEXITCODE
-        } finally {
-            $ErrorActionPreference = $oldEap
-            Pop-Location
-            if ($PSCmdlet -and $PSCmdlet.ShouldProcess($verInfoPath, 'Remove temp version file')) {
-                Remove-Item $verInfoPath -ErrorAction SilentlyContinue
-            } else {
-                Write-ReleaseSkip "Remove $verInfoPath (WhatIf)"
-            }
+        } else {
+            Write-ReleaseSkip "PyInstaller build (WhatIf)"
         }
 
         if ($pyiExit -and $pyiExit -ne 0) {
@@ -483,7 +495,13 @@ function Invoke-PyAppRelease {
     # ── 3. Sign main EXE ──────────────────────────────────────────────────────
     Write-ReleaseStep "Code signing: main EXE"
     if ($SkipSign) { Write-ReleaseSkip "Signing skipped (-SkipSign)" }
-    else           { Invoke-SignFile $mainExe $DryRun.IsPresent }
+    else {
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($mainExe, 'Sign main EXE')) {
+            Invoke-SignFile $mainExe $DryRun.IsPresent
+        } else {
+            Write-ReleaseSkip "Sign main EXE (WhatIf)"
+        }
+    }
 
     # ── 4. Build installer (Inno Setup) ───────────────────────────────────────
     Write-ReleaseStep "Building installer (Inno Setup)"
@@ -520,9 +538,14 @@ function Invoke-PyAppRelease {
         # Record timestamp before build to identify new installer
         $buildStart = Get-Date
 
-        Invoke-ReleaseCmd "ISCC $(Split-Path $issPath -Leaf) /DAppVersion=$newVersion" {
-            & $iscc @isccArgs
-        } $DryRun.IsPresent
+        $isccDesc = "ISCC $(Split-Path $issPath -Leaf) /DAppVersion=$newVersion"
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($issPath, 'Run ISCC')) {
+            Invoke-ReleaseCmd $isccDesc {
+                & $iscc @isccArgs
+            } $DryRun.IsPresent
+        } else {
+            Write-ReleaseSkip "$isccDesc (WhatIf)"
+        }
 
         if (-not $DryRun) {
             # Find the installer produced by this run
@@ -544,7 +567,11 @@ function Invoke-PyAppRelease {
     if ($SkipSign -or $installerPath -eq '') {
         Write-ReleaseSkip "Signing skipped"
     } else {
-        Invoke-SignFile $installerPath $DryRun.IsPresent
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($installerPath, 'Sign installer')) {
+            Invoke-SignFile $installerPath $DryRun.IsPresent
+        } else {
+            Write-ReleaseSkip "Sign installer (WhatIf)"
+        }
     }
 
     # ── 6. SHA-256 checksum ───────────────────────────────────────────────────
@@ -552,12 +579,17 @@ function Invoke-PyAppRelease {
     $checksumPath = ""
     if ($installerPath -ne '') {
         $checksumPath = $installerPath -replace '\.exe$', '.sha256'
-        Invoke-ReleaseCmd "SHA256 $(Split-Path $installerPath -Leaf)" {
-            $hash = (Get-FileHash $installerPath -Algorithm SHA256).Hash
-            "$hash  $(Split-Path $installerPath -Leaf)" |
-                Set-Content $checksumPath -Encoding UTF8
-        } $DryRun.IsPresent
-        if (-not $DryRun) { Write-ReleaseOK "Checksum: $(Split-Path $checksumPath -Leaf)" }
+        $shaDesc = "SHA256 $(Split-Path $installerPath -Leaf)"
+        if ($PSCmdlet -and $PSCmdlet.ShouldProcess($checksumPath, 'Generate SHA-256 checksum')) {
+            Invoke-ReleaseCmd $shaDesc {
+                $hash = (Get-FileHash $installerPath -Algorithm SHA256).Hash
+                "$hash  $(Split-Path $installerPath -Leaf)" |
+                    Set-Content $checksumPath -Encoding UTF8
+            } $DryRun.IsPresent
+            if (-not $DryRun) { Write-ReleaseOK "Checksum: $(Split-Path $checksumPath -Leaf)" }
+        } else {
+            Write-ReleaseSkip "$shaDesc (WhatIf)"
+        }
     } else {
         Write-ReleaseSkip "No installer — checksum skipped"
     }
@@ -595,9 +627,14 @@ function Invoke-PyAppRelease {
             Write-ReleaseWarn "$relVerPath is ignored by .gitignore; skipping commit/tag/push"
             Write-ReleaseSkip "Git tagging skipped (VERSION ignored)"
         } else {
-            Invoke-ReleaseCmd "git add $relVerPath" {
-                git -C $ProjectRoot add -- $relVerPath
-            } $DryRun.IsPresent
+            $gitAddDesc = "git add $relVerPath"
+            if ($PSCmdlet -and $PSCmdlet.ShouldProcess($relVerPath, 'Git add VERSION')) {
+                Invoke-ReleaseCmd $gitAddDesc {
+                    git -C $ProjectRoot add -- $relVerPath
+                } $DryRun.IsPresent
+            } else {
+                Write-ReleaseSkip "$gitAddDesc (WhatIf)"
+            }
 
             # If nothing is staged after adding VERSION, skip commit/tag gracefully.
             $hasStaged = $true
@@ -616,20 +653,35 @@ function Invoke-PyAppRelease {
                 Write-ReleaseWarn "No staged changes to commit after adding $relVerPath"
                 Write-ReleaseSkip "Git tagging skipped (nothing to commit)"
             } else {
-                Invoke-ReleaseCmd "git commit -m `"chore: release $tagName`"" {
-                    git -C $ProjectRoot commit -m "chore: release $tagName"
-                } $DryRun.IsPresent
+                $gitCommitDesc = "git commit -m 'chore: release $tagName'"
+                if ($PSCmdlet -and $PSCmdlet.ShouldProcess($relVerPath, 'Git commit')) {
+                    Invoke-ReleaseCmd $gitCommitDesc {
+                        git -C $ProjectRoot commit -m "chore: release $tagName"
+                    } $DryRun.IsPresent
+                } else {
+                    Write-ReleaseSkip "$gitCommitDesc (WhatIf)"
+                }
 
-                Invoke-ReleaseCmd "git tag -a $tagName -m `"Release $tagName`"" {
-                    git -C $ProjectRoot tag -a $tagName -m "Release $tagName"
-                } $DryRun.IsPresent
+                $gitTagDesc = "git tag -a $tagName -m 'Release $tagName'"
+                if ($PSCmdlet -and $PSCmdlet.ShouldProcess($tagName, 'Git tag')) {
+                    Invoke-ReleaseCmd $gitTagDesc {
+                        git -C $ProjectRoot tag -a $tagName -m "Release $tagName"
+                    } $DryRun.IsPresent
+                } else {
+                    Write-ReleaseSkip "$gitTagDesc (WhatIf)"
+                }
 
                 Write-ReleaseOK "Tagged: $tagName"
 
                 if (-not $SkipGitPush) {
-                    Invoke-ReleaseCmd "git push $GitRemote HEAD --tags" {
-                        git -C $ProjectRoot push $GitRemote HEAD --tags
-                    } $DryRun.IsPresent
+                    $gitPushDesc = "git push $GitRemote HEAD --tags"
+                    if ($PSCmdlet -and $PSCmdlet.ShouldProcess($ProjectRoot, 'Git push')) {
+                        Invoke-ReleaseCmd $gitPushDesc {
+                            git -C $ProjectRoot push $GitRemote HEAD --tags
+                        } $DryRun.IsPresent
+                    } else {
+                        Write-ReleaseSkip "$gitPushDesc (WhatIf)"
+                    }
                     if (-not $DryRun) { Write-ReleaseOK "Pushed to $GitRemote" }
                 } else {
                     Write-ReleaseSkip "Git push skipped (-SkipGitPush)"
@@ -691,7 +743,7 @@ function New-PyAppReleaseConfig {
 .EXAMPLE
     New-PyAppReleaseConfig -AppName MyTool -Company Acme -InnoScript installer\MyTool.iss
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param(
         [Parameter(Mandatory)]
         [string]$AppName,
@@ -786,7 +838,7 @@ function Start-PyAppReleaseGUI {
     # Explicit path:
     Start-PyAppReleaseGUI -ProjectDir "C:\Projects\MyApp"
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param([string]$ProjectDir = "")
 
     $guiScript = Join-Path (Split-Path -Parent $PSCommandPath) "PyAppRelease-GUI.ps1"
@@ -797,6 +849,10 @@ function Start-PyAppReleaseGUI {
     # Launch the GUI in a separate process.
     $launchArgs = "-NoProfile -ExecutionPolicy Bypass -STA -File `"$guiScript`""
     if ($ProjectDir) { $launchArgs += " -ProjectDir `"$ProjectDir`"" }
+    if ($PSCmdlet -and -not $PSCmdlet.ShouldProcess($guiScript, 'Launch GUI')) {
+        Write-ReleaseSkip "Launch GUI (WhatIf)"
+        return
+    }
     Start-Process powershell.exe -ArgumentList $launchArgs
 }
 

@@ -1,10 +1,9 @@
 @{
     # PSScriptAnalyzer settings for PyAppRelease
     # Exclude the BOM rule (often irrelevant for repo files) and tune severities.
-    ExcludeRules = @('PSUseBOMForUnicodeEncodedFile')
+    ExcludeRules = @('PSUseBOMForUnicodeEncodedFile', 'PSAvoidUsingWriteHost')
 
     Rules = @{
-        'PSAvoidUsingWriteHost' = @{ Enabled = $false }
         'PSUseDeclaredVarsMoreThanAssignments' = @{ Enabled = $true; Severity = 'Warning' }
         'PSAvoidUsingPlainTextForPassword' = @{ Enabled = $true; Severity = 'Error' }
     }

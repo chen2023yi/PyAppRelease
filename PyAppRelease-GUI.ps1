@@ -97,7 +97,8 @@ try {
 })
 [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
 [System.Windows.Forms.Application]::add_ThreadException({
-    param($sender, $e)
+    param($unusedSender, $e)
+    [void]$unusedSender
     Write-TraceLog "ThreadException" $e.Exception.Message
     Write-ErrorLog "ThreadException" $e.Exception
     try {
@@ -108,7 +109,8 @@ try {
         }
 })
 [AppDomain]::CurrentDomain.add_UnhandledException({
-    param($sender, $e)
+    param($unusedSender, $e)
+    [void]$unusedSender
     Write-TraceLog "AppDomainUnhandledException" ([string]$e.IsTerminating)
     Write-ErrorLog "AppDomainUnhandledException" $e.ExceptionObject
 })
@@ -131,7 +133,9 @@ function Read-ProjectInfo([string]$dir) {
             $cfg = Import-PowerShellDataFile $cfgPath
             if ($cfg.ContainsKey("OutputDir") -and $cfg.OutputDir) { $r.OutputDir = $cfg.OutputDir }
             if ($cfg.ContainsKey("AppName")   -and $cfg.AppName)   { $r.AppName   = $cfg.AppName }
-        } catch {}
+        } catch {
+            [System.Diagnostics.Debug]::WriteLine("Read-ProjectInfo: failed to import config: $($_)")
+        }
     }
     # VERSION file lives inside the output (release) folder, not in the source root
     $verPath = Join-Path (Join-Path $dir $r.OutputDir) "VERSION"
@@ -427,7 +431,7 @@ $uiTimer.Add_Tick({
                 $line = $script:logReader.ReadLine()
                 if ($null -eq $line) { break }
                 $clean = $line -replace '\x1b\[[0-9;]*m', ''
-                Append-Log $clean (Get-LineColor $clean)
+                Add-Log $clean (Get-LineColor $clean)
             }
         }
 
@@ -440,7 +444,7 @@ $uiTimer.Add_Tick({
                     $line = $script:logReader.ReadLine()
                     if ($null -eq $line) { break }
                     $clean = $line -replace '\x1b\[[0-9;]*m', ''
-                    Append-Log $clean (Get-LineColor $clean)
+                    Add-Log $clean (Get-LineColor $clean)
                 }
                 $script:logReader.Close()
                 $script:logReader = $null
@@ -463,14 +467,14 @@ $uiTimer.Add_Tick({
             Update-UI
 
             if ($code -eq 0) {
-                Append-Log ""
-                Append-Log ("=" * 55) ([System.Drawing.Color]::LightGreen)
-                Append-Log "  Release completed successfully!" ([System.Drawing.Color]::LightGreen)
-                Append-Log ("=" * 55) ([System.Drawing.Color]::LightGreen)
+                Add-Log ""
+                Add-Log ("=" * 55) ([System.Drawing.Color]::LightGreen)
+                Add-Log "  Release completed successfully!" ([System.Drawing.Color]::LightGreen)
+                Add-Log ("=" * 55) ([System.Drawing.Color]::LightGreen)
                 $btnOpenOut.Enabled = (Test-Path $txtOutDir.Text -ErrorAction SilentlyContinue)
             } else {
-                Append-Log ""
-                Append-Log "  Release FAILED  (exit code: $code)" ([System.Drawing.Color]::OrangeRed)
+                Add-Log ""
+                Add-Log "  Release FAILED  (exit code: $code)" ([System.Drawing.Color]::OrangeRed)
             }
         }
     } catch {
@@ -479,7 +483,7 @@ $uiTimer.Add_Tick({
     }
 })
 
-function Append-Log([string]$text, [System.Drawing.Color]$color = [System.Drawing.Color]::LightGray) {
+function Add-Log([string]$text, [System.Drawing.Color]$color = [System.Drawing.Color]::LightGray) {
     $logBox.SelectionStart  = $logBox.TextLength
     $logBox.SelectionLength = 0
     $logBox.SelectionColor  = $color
@@ -488,7 +492,10 @@ function Append-Log([string]$text, [System.Drawing.Color]$color = [System.Drawin
 }
 
 function Update-UI {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
     try {
+        if ($PSCmdlet -and -not $PSCmdlet.ShouldProcess('UI','Update UI')) { return }
         $i = $script:info
         if ($i.ConfigFound) {
             $lblStatus.Text      = "[OK] release.config.psd1 found  ($($i.AppName))"
@@ -519,7 +526,10 @@ function Update-UI {
 }
 
 function Update-VersionPreview {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
     try {
+        if ($PSCmdlet -and -not $PSCmdlet.ShouldProcess('UI','Update version preview')) { return }
         $ver = $script:info.Version
         if (-not $ver) { $lblPreview.Text = "->  ---"; return }
         $bump = if ($rbMajor.Checked) { "Major" } elseif ($rbMinor.Checked) { "Minor" } elseif ($rbCustom.Checked) { "Custom" } else { "Patch" }
@@ -598,16 +608,17 @@ $form.Add_Load({
     Write-TraceLog "Form" "Load event fired."
 })
 $form.Add_FormClosing({
-    param($sender, $e)
+    param($unusedSender, $e)
+    [void]$unusedSender
     try {
         Write-TraceLog "FormClosing" ("Reason=" + $e.CloseReason + "; HasWorker=" + [bool]($script:runProc -and -not $script:runProc.HasExited))
         if ($script:runProc -and -not $script:runProc.HasExited) {
             $r = [System.Windows.Forms.MessageBox]::Show("Release is still running. Abort and close?", "Confirm", "YesNo", "Warning")
             if ($r -ne "Yes") { $e.Cancel=$true; return }
-            try { $script:runProc.Kill() } catch {}
+            try { $script:runProc.Kill() } catch { [System.Diagnostics.Debug]::WriteLine("Failed to kill child process: $($_)") }
         }
         $uiTimer.Stop()
-        if ($script:logReader)  { try { $script:logReader.Close() } catch {} }
+        if ($script:logReader)  { try { $script:logReader.Close() } catch { [System.Diagnostics.Debug]::WriteLine("Failed to close log reader: $($_)") } }
         if ($script:logFile)    { Remove-Item $script:logFile   -ErrorAction SilentlyContinue }
         if ($script:tmpScript)  { Remove-Item $script:tmpScript -ErrorAction SilentlyContinue }
     } catch {
@@ -691,10 +702,10 @@ try {
     [IO.File]::WriteAllText($script:logFile, "")
 
     $logBox.Clear()
-    Append-Log ("=" * 55) ([System.Drawing.Color]::DarkCyan)
-    Append-Log "  Launching release pipeline..." ([System.Drawing.Color]::Cyan)
-    Append-Log ("=" * 55) ([System.Drawing.Color]::DarkCyan)
-    Append-Log ""
+    Add-Log ("=" * 55) ([System.Drawing.Color]::DarkCyan)
+    Add-Log "  Launching release pipeline..." ([System.Drawing.Color]::Cyan)
+    Add-Log ("=" * 55) ([System.Drawing.Color]::DarkCyan)
+    Add-Log ""
 
     $btnStart.Enabled   = $false
     $btnStart.Text      = "Running..."
