@@ -1,0 +1,25 @@
+2026-04-18 15:54:20.575 [8060] [Startup] Script entry. ProjectDir=''
+2026-04-18 15:54:20.584 [8060] [Startup] PSBoundParameters=
+2026-04-18 15:54:20.585 [8060] [Startup] CommandLine=powershell.exe  -NoProfile -ExecutionPolicy Bypass -STA -File "F:\MyCode\PyAppRelease\PyAppRelease-GUI.ps1"
+2026-04-18 15:54:20.585 [8060] [Startup] InvocationLine=
+2026-04-18 15:54:20.588 [8060] [Startup] CurrentDirectory=F:\MyCode\PyAppRelease
+2026-04-18 15:54:20.832 [8060] [Startup] InitialDir=''
+2026-04-18 15:54:20.832 [8060] [Startup] Entering Application.Run(form).
+2026-04-18 15:54:20.847 [8060] [Form] Load event fired.
+2026-04-18 15:54:20.866 [8060] [Form] Shown event fired.
+2026-04-18 15:55:57.353 [8060] [WorkerExit] Background release process exited with code 0
+2026-04-18 15:58:00.306 [8060] [UI] Close button clicked.
+2026-04-18 15:58:00.314 [8060] [FormClosing] Reason=UserClosing; HasWorker=False
+2026-04-18 15:58:00.318 [8060] [FormClosed] Form closed event fired.
+2026-04-18 15:58:00.333 [8060] [ApplicationExit] Application exit event fired.
+2026-04-18 15:58:00.333 [8060] [Startup] Application.Run(form) returned.
+2026-04-18 15:58:02.472 [11804] [UI] Close button clicked.
+2026-04-18 15:58:02.477 [11804] [FormClosing] Reason=UserClosing; HasWorker=False
+2026-04-18 15:58:02.478 [11804] [FormClosed] Form closed event fired.
+2026-04-18 15:58:02.491 [11804] [ApplicationExit] Application exit event fired.
+2026-04-18 15:58:02.491 [11804] [Startup] Application.Run(form) returned.
+2026-04-18 15:58:03.952 [29432] [UI] Close button clicked.
+2026-04-18 15:58:03.957 [29432] [FormClosing] Reason=UserClosing; HasWorker=False
+2026-04-18 15:58:03.958 [29432] [FormClosed] Form closed event fired.
+2026-04-18 15:58:03.969 [29432] [ApplicationExit] Application exit event fired.
+2026-04-18 15:58:03.970 [29432] [Startup] Application.Run(form) returned.
