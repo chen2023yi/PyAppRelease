@@ -126,8 +126,12 @@ function Find-ModulePath {
 function Read-ProjectInfo([string]$dir) {
     $r = @{ Valid=$false; Version=""; ConfigFound=$false; OutputDir="release"; AppName=""; VersionMissing=$false }
     if (-not $dir -or -not (Test-Path $dir -PathType Container)) { return $r }
-    $cfgPath = Join-Path $dir "release.config.psd1"
-    if (Test-Path $cfgPath) {
+    $cfgPathRoot    = Join-Path $dir "release.config.psd1"
+    $cfgPathRelease = Join-Path (Join-Path $dir "release") "release.config.psd1"
+    $cfgPath = $null
+    if (Test-Path $cfgPathRoot) { $cfgPath = $cfgPathRoot }
+    elseif (Test-Path $cfgPathRelease) { $cfgPath = $cfgPathRelease }
+    if ($cfgPath) {
         $r.ConfigFound = $true
         try {
             $cfg = Import-PowerShellDataFile $cfgPath
@@ -153,6 +157,51 @@ function Read-ProjectInfo([string]$dir) {
             $r.VersionMissing = $true
         }
     }
+
+    # If no config was found, auto-create minimal config + VERSION inside release/
+    if (-not $r.ConfigFound) {
+        try {
+            $altDir = Join-Path $dir 'release'
+            $altCfg = Join-Path $altDir 'release.config.psd1'
+            if (-not (Test-Path $altDir)) { New-Item -ItemType Directory -Path $altDir -Force | Out-Null }
+            $defaultAppName = Split-Path -Leaf $dir
+            $psd1Template = @'
+@{
+    AppName        = "{APPNAME}"
+    DisplayName    = "{APPNAME}"
+    Description    = "{APPNAME}"
+    Company        = ""
+
+    EntryScript    = "main.py"
+    VenvPython     = ".venv\Scripts\python.exe"
+
+    Windowed       = $true
+    OneFile        = $false
+    CollectAll     = @()
+    HiddenImports  = @()
+    ExtraArgs      = @()
+
+    OutputDir      = "release"
+    GitRemote      = "origin"
+    TagPrefix      = "v"
+}
+'@
+            $psd1 = $psd1Template -replace '\{APPNAME\}',$defaultAppName
+            if (-not (Test-Path $altCfg)) { $psd1 | Set-Content -Path $altCfg -Encoding UTF8 }
+            Write-TraceLog "Read-ProjectInfo" "Auto-created config: $altCfg"
+            $r.ConfigFound = $true
+            if ($r.AppName -eq '') { $r.AppName = $defaultAppName }
+
+            # Ensure a VERSION file exists so the UI becomes valid and Start is enabled
+            $verPath2 = Join-Path $altDir 'VERSION'
+            if (-not (Test-Path $verPath2)) { Set-Content -Path $verPath2 -Value '0.0.0' -Encoding UTF8 }
+            $r.Version = '0.0.0'
+            $r.VersionMissing = $false
+        } catch {
+            Write-TraceLog "Read-ProjectInfo" "Auto-create failed: $_"
+        }
+    }
+
     $r.Valid = $r.ConfigFound -and [bool]$r.Version
     return $r
 }

@@ -17,8 +17,8 @@ PyAppRelease — 操作说明（简明）
 Start-Process powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File ".\PyAppRelease-GUI.ps1"
 ```
 
-2. 在 GUI 中：
-- 选择包含 `release.config.psd1` 的项目根目录。
+- 2. 在 GUI 中：
+- 选择包含 `release.config.psd1` 的项目根目录（若缺失，工具会在项目的 `release/` 目录自动生成默认配置）。
 - 检查输出目录（默认 `release/`）、版本、签名设置。
 - 选择版本 bump（Patch/Minor/Major/Custom），点击 `> Start Release`。
 
@@ -66,7 +66,7 @@ release.config.psd1 关键字段
 - `VenvPython`：相对于项目根的 python 路径，默认 `.venv\Scripts\python.exe`（工具已实现自动探测 `.venv|venv|.env|env` 或系统 `python`）。
 - `OutputDir`：生成物目录，默认 `release`（所有中间/产出文件都放这里）。
 - `OneFile`/`Windowed`：PyInstaller 选项。
-- `InnoScript` / `InnoDefines`：Inno Setup 模板与变量。
+- `InnoScript` / `InnoDefines`：Inno Setup 模板与变量。若未提供 `InnoScript`，工具会自动生成一个默认 Inno 脚本并输出安装程序。
 - 签名：通过 GUI 传递环境变量 `PYAPP_SIGN_PFX` / `PYAPP_SIGN_PASSWORD` 或 `PYAPP_SIGN_THUMBPRINT` 给子进程，避免明文写入磁盘。
 
 日志与故障排查
