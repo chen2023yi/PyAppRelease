@@ -123,6 +123,29 @@ function Find-ModulePath {
     return $null
 }
 
+function Get-LastProjectDir {
+    $settingsPath = Join-Path $logDir "settings.json"
+    if (Test-Path $settingsPath) {
+        try {
+            $settings = Get-Content $settingsPath -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($settings.LastProjectDir -and (Test-Path $settings.LastProjectDir)) { return $settings.LastProjectDir }
+        } catch {
+            [System.Diagnostics.Debug]::WriteLine("Get-LastProjectDir failed: $($_)")
+        }
+    }
+    return $null
+}
+
+function Save-LastProjectDir([string]$dir) {
+    $settingsPath = Join-Path $logDir "settings.json"
+    try {
+        $settings = @{ LastProjectDir = $dir }
+        $settings | ConvertTo-Json -Depth 2 | Set-Content $settingsPath -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch {
+        Write-TraceLog "SaveSettings" "Failed: $_"
+    }
+}
+
 function Read-ProjectInfo([string]$dir) {
     $r = @{ Valid=$false; Version=""; ConfigFound=$false; OutputDir="release"; AppName=""; VersionMissing=$false }
     if (-not $dir -or -not (Test-Path $dir -PathType Container)) { return $r }
@@ -180,6 +203,7 @@ function Read-ProjectInfo([string]$dir) {
     CollectAll     = @()
     HiddenImports  = @()
     ExtraArgs      = @()
+    Icon           = ""
 
     OutputDir      = "release"
     GitRemote      = "origin"
@@ -382,7 +406,7 @@ $grpSign.Controls.AddRange(@($rbSkipSign, $rbThumb, $txtThumb, $rbPfx, $txtPfxPa
 $grpOpts          = New-Object System.Windows.Forms.GroupBox
 $grpOpts.Text     = " Options "
 $grpOpts.Location = New-Object System.Drawing.Point($P, 402)
-$grpOpts.Size     = New-Object System.Drawing.Size(636, 55)
+$grpOpts.Size     = New-Object System.Drawing.Size(636, 82)
 $grpOpts.Anchor   = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 
     $chkGitTag          = New-Object System.Windows.Forms.CheckBox
@@ -403,16 +427,32 @@ $grpOpts.Anchor   = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Window
     $chkDryRun.Location = New-Object System.Drawing.Point(312, 22)
     $chkDryRun.Size     = New-Object System.Drawing.Size(310, 22)
 
-$grpOpts.Controls.AddRange(@($chkGitTag, $chkGitPush, $chkDryRun))
+    $lblIcon          = New-Object System.Windows.Forms.Label
+    $lblIcon.Text     = "Icon:"
+    $lblIcon.AutoSize = $true
+    $lblIcon.Location = New-Object System.Drawing.Point(8, 54)
+
+    $txtIcon          = New-Object System.Windows.Forms.TextBox
+    $txtIcon.Location = New-Object System.Drawing.Point(46, 52)
+    $txtIcon.Size     = New-Object System.Drawing.Size(496, 23)
+    $txtIcon.Anchor   = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+
+    $btnIconBrowse          = New-Object System.Windows.Forms.Button
+    $btnIconBrowse.Text     = "Browse..."
+    $btnIconBrowse.Location = New-Object System.Drawing.Point(550, 51)
+    $btnIconBrowse.Size     = New-Object System.Drawing.Size(74, 25)
+    $btnIconBrowse.Anchor   = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+
+$grpOpts.Controls.AddRange(@($chkGitTag, $chkGitPush, $chkDryRun, $lblIcon, $txtIcon, $btnIconBrowse))
 
 # === OUTPUT DIR ===
 $lblOutLbl          = New-Object System.Windows.Forms.Label
 $lblOutLbl.Text     = "Output Folder:"
 $lblOutLbl.AutoSize = $true
-$lblOutLbl.Location = New-Object System.Drawing.Point($P, 472)
+$lblOutLbl.Location = New-Object System.Drawing.Point($P, 499)
 
 $txtOutDir            = New-Object System.Windows.Forms.TextBox
-$txtOutDir.Location   = New-Object System.Drawing.Point(112, 469)
+$txtOutDir.Location   = New-Object System.Drawing.Point(112, 496)
 $txtOutDir.Size       = New-Object System.Drawing.Size(432, 23)
 $txtOutDir.ReadOnly   = $true
 $txtOutDir.BackColor  = [System.Drawing.SystemColors]::Control
@@ -420,15 +460,15 @@ $txtOutDir.Anchor     = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Wi
 
 $btnOpenOut          = New-Object System.Windows.Forms.Button
 $btnOpenOut.Text     = "Open Folder"
-$btnOpenOut.Location = New-Object System.Drawing.Point(550, 468)
+$btnOpenOut.Location = New-Object System.Drawing.Point(550, 495)
 $btnOpenOut.Size     = New-Object System.Drawing.Size(74, 25)
 $btnOpenOut.Enabled  = $false
 $btnOpenOut.Anchor   = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 
 # === LOG ===
 $logBox            = New-Object System.Windows.Forms.RichTextBox
-$logBox.Location   = New-Object System.Drawing.Point($P, 504)
-$logBox.Size       = New-Object System.Drawing.Size(636, 212)
+$logBox.Location   = New-Object System.Drawing.Point($P, 531)
+$logBox.Size       = New-Object System.Drawing.Size(636, 185)
 $logBox.ReadOnly   = $true
 $logBox.BackColor  = [System.Drawing.Color]::FromArgb(18, 18, 18)
 $logBox.ForeColor  = [System.Drawing.Color]::LightGray
@@ -644,6 +684,11 @@ $btnPfxBrowse.Add_Click({
     $dlg.Filter = "PFX Certificate|*.pfx|All files|*.*"
     if ($dlg.ShowDialog() -eq "OK") { $txtPfxPath.Text = $dlg.FileName }
 })
+$btnIconBrowse.Add_Click({
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Filter = "Image Files|*.ico;*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files|*.*"
+    if ($dlg.ShowDialog() -eq "OK") { $txtIcon.Text = $dlg.FileName }
+})
 $chkGitTag.Add_CheckedChanged({
     $chkGitPush.Enabled = $chkGitTag.Checked
     if (-not $chkGitTag.Checked) { $chkGitPush.Checked = $false }
@@ -705,6 +750,9 @@ $btnStart.Add_Click({
     $folder = $txtFolder.Text.Trim() -replace "'", "''"
     $mod    = $modPath -replace "'", "''"
 
+    # Remember project folder for next launch
+    Save-LastProjectDir $txtFolder.Text.Trim()
+
     # Signing credentials are passed via child-process environment variables
     # instead of writing secrets to the temp script file on disk.
     $signEnvVars = @{}
@@ -728,6 +776,12 @@ $btnStart.Add_Click({
     if ($chkDryRun.Checked)       { $flags.Add("-DryRun")      }
     $flagStr = $flags -join " "
 
+    $iconArg = ""
+    if ($txtIcon.Text.Trim()) {
+        $iconPathEsc = $txtIcon.Text.Trim() -replace "'", "''"
+        $iconArg = "-Icon '$iconPathEsc'"
+    }
+
     $script:tmpScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.ps1'
     $script:logFile   = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.log'
     $logEsc = $script:logFile -replace "'", "''"
@@ -738,7 +792,7 @@ function _L(`$m) { [IO.File]::AppendAllText(`$_logPath, "`$m`r`n") }
 try {
     Set-Location '$folder'
     Import-Module '$mod' -Force
-    Invoke-PyAppRelease -ConfigFile 'release.config.psd1' $bumpArg $flagStr *>&1 |
+    Invoke-PyAppRelease -ConfigFile 'release.config.psd1' $bumpArg $flagStr $iconArg *>&1 |
         ForEach-Object { _L "`$_" }
 } catch {
     _L "[ERR] `$_"
@@ -802,7 +856,12 @@ $initialDir = if ($ProjectDir -and (Test-Path $ProjectDir)) { $ProjectDir }
                   $cwd = (Get-Location).Path
                   if (Test-Path (Join-Path $cwd "release.config.psd1")) { $cwd } else { "" }
               }
-if ($initialDir) { $txtFolder.Text = $initialDir }
+if ($initialDir) {
+    $txtFolder.Text = $initialDir
+} else {
+    $lastDir = Get-LastProjectDir
+    if ($lastDir) { $txtFolder.Text = $lastDir }
+}
 
 [void]($form.Add_Shown({
     Write-TraceLog "Form" "Shown event fired."
