@@ -37,4 +37,54 @@ Describe 'PyAppRelease module' {
             throw 'Expected generated script to clean old shortcut icon files during install and uninstall.'
         }
     }
+
+    It 'uses the modern Git credential helper when manager-core is configured but unavailable' {
+        & (Get-Module PyAppRelease) {
+            $script:warningMessages = @()
+
+            function script:git {
+                param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+
+                $argList = @($Arguments | ForEach-Object { [string]$_ })
+                if ($argList.Count -ge 4 -and $argList[2] -eq 'config' -and $argList[3] -eq '--get-all') {
+                    $global:LASTEXITCODE = 0
+                    'manager-core'
+                    return
+                }
+
+                throw "Unexpected git invocation: $($argList -join ' ')"
+            }
+
+            function script:Get-Command {
+                param(
+                    [Parameter(Position = 0)]
+                    [string]$Name
+                )
+
+                if ($Name -eq 'git-credential-manager-core') {
+                    return $null
+                }
+
+                if ($Name -eq 'git-credential-manager') {
+                    return [pscustomobject]@{ Name = $Name; Source = 'git-credential-manager.exe' }
+                }
+
+                Microsoft.PowerShell.Core\Get-Command @PSBoundParameters
+            }
+
+            function script:Write-ReleaseWarn([string]$msg) {
+                $script:warningMessages += $msg
+            }
+
+            $result = Get-GitCommandArgs -ProjectRoot 'C:\Repo' -RequireCredentialHelper
+
+            if (@($result) -join ' ' -ne '-C C:\Repo -c credential.helper=manager') {
+                throw "Expected temporary credential helper override, got: $(@($result) -join ' ')"
+            }
+
+            if (-not ($script:warningMessages | Where-Object { $_ -like '*credential.helper includes ''manager-core''*' })) {
+                throw 'Expected compatibility warning when falling back to manager.'
+            }
+        }
+    }
 }

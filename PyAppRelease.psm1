@@ -68,10 +68,45 @@ function Invoke-ReleaseCmd([string]$desc, [scriptblock]$cmd, [bool]$dry) {
         Write-Host "    [DRY]  $desc" -ForegroundColor DarkYellow
         return
     }
-    & $cmd
+    # Native commands (e.g. git) write progress info to stderr even on success.
+    # Temporarily use Continue so stderr output never triggers a terminating error;
+    # success/failure is determined solely by $LASTEXITCODE.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $cmd
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "'$desc' failed with exit code $LASTEXITCODE"
     }
+}
+
+function Get-GitCommandArgs {
+    param(
+        [string]$ProjectRoot,
+        [switch]$RequireCredentialHelper
+    )
+
+    $gitArgs = @('-C', $ProjectRoot)
+    if (-not $RequireCredentialHelper) {
+        return $gitArgs
+    }
+
+    $allHelpers = @(& git @gitArgs config --get-all credential.helper 2>$null)
+    $hasBrokenCore = $allHelpers | Where-Object { $_.Trim() -eq 'manager-core' }
+    if (-not $hasBrokenCore) {
+        return $gitArgs
+    }
+
+    $gcmCoreCmd = Get-Command git-credential-manager-core -ErrorAction SilentlyContinue
+    if ($gcmCoreCmd) {
+        return $gitArgs
+    }
+
+    Write-ReleaseWarn "Git credential.helper includes 'manager-core' but manager-core is unavailable. Using a temporary '-c credential.helper=manager' override for this push."
+    return $gitArgs + @('-c', 'credential.helper=manager')
 }
 
 function Get-SignToolPath {
@@ -885,8 +920,23 @@ except Exception as e:
                     Write-ReleaseSkip "$gitCommitDesc (WhatIf)"
                 }
 
+                # Check if tag already exists (e.g. from a previous failed push)
+                $tagExists = $false
+                if (-not $DryRun) {
+                    $oldEap2 = $ErrorActionPreference
+                    try {
+                        $ErrorActionPreference = 'Continue'
+                        git -C $ProjectRoot rev-parse --verify "refs/tags/$tagName" 2>$null | Out-Null
+                        $tagExists = ($LASTEXITCODE -eq 0)
+                    } finally {
+                        $ErrorActionPreference = $oldEap2
+                    }
+                }
+
                 $gitTagDesc = "git tag -a $tagName -m 'Release $tagName'"
-                if ($PSCmdlet -and $PSCmdlet.ShouldProcess($tagName, 'Git tag')) {
+                if ($tagExists) {
+                    Write-ReleaseWarn "Tag $tagName already exists locally — skipping tag creation (will still push)"
+                } elseif ($PSCmdlet -and $PSCmdlet.ShouldProcess($tagName, 'Git tag')) {
                     Invoke-ReleaseCmd $gitTagDesc {
                         git -C $ProjectRoot tag -a $tagName -m "Release $tagName"
                     } $DryRun.IsPresent
@@ -899,8 +949,9 @@ except Exception as e:
                 if (-not $SkipGitPush) {
                     $gitPushDesc = "git push $GitRemote HEAD --tags"
                     if ($PSCmdlet -and $PSCmdlet.ShouldProcess($ProjectRoot, 'Git push')) {
+                        $gitPushArgs = Get-GitCommandArgs -ProjectRoot $ProjectRoot -RequireCredentialHelper
                         Invoke-ReleaseCmd $gitPushDesc {
-                            git -C $ProjectRoot push $GitRemote HEAD --tags
+                            & git @gitPushArgs push $GitRemote HEAD --tags
                         } $DryRun.IsPresent
                     } else {
                         Write-ReleaseSkip "$gitPushDesc (WhatIf)"

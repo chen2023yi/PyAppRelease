@@ -73,11 +73,13 @@ release.config.psd1 关键字段
 - GUI 跟踪文件：`%LOCALAPPDATA%\PyAppRelease\PyAppRelease_GUI_trace.txt`（每个用户的数据目录）。
 - GUI 错误文件：`%LOCALAPPDATA%\PyAppRelease\PyAppRelease_GUI_error.txt`（每个用户的数据目录）。
 - 打包运行时输出会写入临时 `.log` 并在结束后删除；若需要保留输出，可使用 `-DryRun` 或在 Invoke-PyAppRelease 中临时修改行为。
+- Git 推送兼容性：如果当前 Git 配置的 `credential.helper` 仍是 `manager-core`，但机器上实际只有新版 `manager`，PyAppRelease 会仅对本次 `git push` 临时切换为 `credential.helper=manager`，避免因为旧 helper 名称导致发布在最后一步失败；该修复不会改写你的全局 Git 配置。
 
 常见问题与解决
 - "Python not found": 创建虚拟环境或在 `VenvPython` 指向正确的 python 可执行文件。
 - PyInstaller 脚本提示安装在 `%APPDATA%\Python\..\Scripts` 且不在 PATH：这通常是 `pip install --user` 的提示，属于警告（不会中断流程）。可将对应 Scripts 路径加入 PATH 或使用 `.venv`。
 - Git 报错 `ignored by .gitignore`: 确保 `release/VERSION` 未被 .gitignore 忽略，或在 release 完成后手动提交，或使用 GUI 中的 SkipGitTag 选项。
+- Git 报错 `credential-manager-core` not found：新版本已经内置临时兼容处理，正常情况下无需手工干预；如果仍失败，说明机器上既没有 `git credential-manager-core`，也没有 `git credential-manager`，这时再安装 Git Credential Manager 或手工修正 `git config --global credential.helper`。
 
 改进建议（优先级建议）
 1. CI 集成（高）：添加 GitHub Actions（Windows runner）执行 `Invoke-PyAppRelease -DryRun` 或构建打包流程，自动产出构建工件并在合并时触发发布。
